@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Financiero CRS & FATCA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        .chart-container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            width: 100%;
+            height: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chart-container-fixed-height {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            height: 750px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .table-wrapper {
+            flex-grow: 1;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .subtipo-row-selected {
+            background-color: #EBF8FF;
+        }
+
+        details {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+            border: 1px solid #e2e8f0;
+        }
+        summary {
+            font-weight: 600;
+            font-size: 1.1rem;
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            outline: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 7px 7px 0 0;
+        }
+        details[open] summary {
+            border-bottom: 1px solid #e2e8f0;
+            border-radius: 7px 7px 0 0;
+        }
+        .accordion-content {
+            padding: 1.5rem;
+        }
+        summary::-webkit-details-marker {
+            display: none;
+        }
+        
+        .help-icon {
+            display: inline-block;
+            margin-left: 8px;
+            font-weight: bold;
+            color: #94a3b8;
+            border: 2px solid #cbd5e1;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            text-align: center;
+            line-height: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .help-icon:hover {
+            background-color: #f1f5f9;
+            color: #475569;
+        }
+
+        #tooltip {
+            position: absolute;
+            opacity: 0;
+            background-color: #334155;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        td.clickable {
+            cursor: pointer;
+            color: #3B82F6;
+            font-weight: 500;
+            text-decoration: underline;
+        }
+        td.clickable:hover {
+            color: #2563EB;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 50;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 25px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 550px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .close-button {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .modal-header h4 {
+            margin-top: 0;
+            font-size: 1.25em;
+            color: #333;
+        }
+        .modal-body {
+            margin-top: 15px;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        .modal-body p { margin: 10px 0; }
+        .modal-body strong { color: #555; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="tooltip"></div>
+
+    <div class="container mx-auto p-4">
+        <header class="bg-white rounded-lg shadow-md p-6 mb-6 text-center relative">
+            <h1 class="text-3xl font-bold text-gray-800">Análisis de Reportantes CRS & FATCA en el Sistema Financiero Argentino</h1>
+            <p id="period-display" class="text-gray-600 text-lg font-semibold mt-2"></p>
+        </header>
+
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Cargar datos desde archivo CSV</h2>
+            <div class="flex items-center space-x-4">
+                <label for="csv-file" id="csv-label" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-300 ease-in-out">
+                    Seleccionar archivo
+                </label>
+                <input type="file" id="csv-file" accept=".csv" class="hidden">
+                <span id="file-name" class="text-gray-600 italic">Ningún archivo seleccionado</span>
+                <button id="reset-button" class="hidden bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-300 ease-in-out">
+                    Eliminar y cargar nuevo
+                </button>
+            </div>
+            <div id="loading-spinner" class="hidden mt-4 text-center">
+                <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="text-gray-500 mt-2">Cargando y procesando datos...</p>
+            </div>
+        </div>
+
+        <div id="dashboard-content" class="hidden">
+            <details id="bloque1-details">
+                <summary class="bg-slate-600 text-white">Paso 1: Exploración del Ecosistema Financiero Completo</summary>
+                
+                <div class="accordion-content">
+                    
+                    <div id="filter-status" class="mb-4 flex flex-wrap gap-2"></div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div id="chart-ente-regulador-container" class="chart-container">
+                            <h2 class="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+                                <span>Distribución de Registros por Ente Regulador</span>
+                                <span class="help-icon" data-help-key="enteRegulador">?</span>
+                            </h2>
+                            <div id="ente-regulador-total" class="text-lg font-bold text-gray-600 mb-4 hidden"></div>
+                            <div id="chart-ente-regulador" class="w-full h-full"></div>
+                        </div>
+                
+                        <div id="chart-reporta-container" class="chart-container">
+                             <h2 class="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+                                <span>Clasificación de Registros: ¿Son Sujetos Obligados?</span>
+                                <span class="help-icon" data-help-key="reporta">?</span>
+                            </h2>
+                            <div id="ente-reporta-total" class="text-lg font-bold text-gray-600 mb-4 hidden"></div>
+                            <div id="chart-reporta" class="w-full h-full"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-6 mb-6">
+                        <div id="concentration-chart-container" class="bg-white rounded-lg shadow-md p-6" style="height: 500px;">
+                             <div class="flex justify-between items-center mb-2">
+                                <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+                                    <span>Top 15 Registros con mas inscripciones</span>
+                                    <span class="help-icon" data-help-key="concentrationChart">?</span>
+                                </h2>
+                                <div class="flex items-center space-x-4">
+                                    <span id="concentration-total" class="text-sm font-medium text-gray-600">Total: <span class="font-bold" id="concentration-total-value">--</span></span>
+                                    <select id="concentration-filter" class="form-select rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                        <option value="general">General</option>
+                                        <option value="reportan">Los que reportan</option>
+                                        <option value="no_reportan">Los que no reportan</option>
+                                    </select>
+                                </div>
+                             </div>
+                            <div id="concentration-chart" class="w-full h-full"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-6 mb-6">
+                         <div id="chart-tipo-container" class="chart-container-fixed-height">
+                             <h2 class="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+                                <span>Explorador de Actores del Sistema Financiero</span>
+                                <span class="help-icon" data-help-key="exploradorActores">?</span>
+                            </h2>
+                             <div id="chart-tipo" class="table-wrapper"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div id="list-subtipo-container" class="chart-container-fixed-height">
+                            <h2 class="text-lg font-semibold text-gray-800 mb-2">Listado de Actores por Subtipo Seleccionado</h2>
+                            <div id="list-subtipo" class="table-wrapper"></div>
+                        </div>
+                         <div id="chart-cuit-container" class="chart-container-fixed-height">
+                             <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                                <span>Análisis de Roles por CUIT</span>
+                                <span class="help-icon" data-help-key="analisisCuit">?</span>
+                            </h2>
+                             <div class="flex items-center space-x-4 mb-4">
+                                <label for="cuit-search" class="font-bold">Buscar CUIT o Razón Social:</label>
+                                <input type="text" id="cuit-search" placeholder="Escribe para buscar..." class="form-input block w-full px-3 py-1.5 text-gray-700 bg-white border border-solid border-gray-300 rounded transition ease-in-out m-0 focus:text-gray-700 focus:bg-white focus:border-blue-600 focus:outline-none">
+                            </div>
+                            <div id="chart-cuit" class="w-full h-full"></div>
+                         </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-6 mb-6">
+                        <div id="summary-clasificacion-container" class="bg-white rounded-lg shadow-md p-6">
+                            <h2 class="text-lg font-semibold text-gray-800 mb-2 flex items-center">
+                               <span>Resumen por Clasificación FATCA/CRS</span>
+                               <span class="help-icon" data-help-key="resumenClasificacion">?</span>
+                           </h2>
+                           <p class="text-sm text-gray-500 mb-4 italic">Haga clic en una fila para ver el detalle por subtipo.</p>
+                           <div id="summary-clasificacion-crs" class="table-wrapper"></div>
+                       </div>
+                    </div>
+
+                </div>
+
+            </details>
+            <details id="bloque2-details">
+                <summary class="bg-slate-600 text-white">Paso 2: Identificación de Entidades Reportantes (CUITs Únicos)</summary>
+                <div class="accordion-content">
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white p-4 rounded-lg shadow flex flex-col justify-center">
+                            <label for="reportantes-filter" class="text-sm font-medium text-gray-500">Filtrar por Reporte</label>
+                            <select id="reportantes-filter" class="mt-1 form-select w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                <option value="general">General</option>
+                                <option value="Si">Si</option>
+                                <option value="Si bajo ciertas condiciones">Si bajo ciertas condiciones</option>
+                            </select>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h3 class="text-sm font-medium text-gray-500">Total CUITs Reportantes</h3>
+                            <p id="kpi-total-cuits" class="mt-1 text-3xl font-semibold text-gray-900">--</p>
+                        </div>
+                        <div id="kpi-max-complejidad" class="bg-white p-4 rounded-lg shadow cursor-pointer hover:bg-gray-50 transition">
+                            <h3 class="text-sm font-medium text-gray-500">Entidad con Mayor Complejidad</h3>
+                            <div id="kpi-max-complejidad-content">
+                                 <p class="mt-1 text-xl font-semibold text-gray-900 truncate">--</p>
+                                <p class="text-sm text-gray-500">-- Registros</p>
+                            </div>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h3 class="text-sm font-medium text-gray-500">Promedio de Registros por CUIT</h3>
+                            <p id="kpi-promedio-roles" class="mt-1 text-3xl font-semibold text-gray-900">--</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-6 mb-6">
+                        <div id="list-if-reportantes-container" class="chart-container-fixed-height">
+                            <h2 class="text-lg font-semibold text-gray-800 mb-2">Entidades Reportantes (Listado por CUIT Único)</h2>
+                            <div id="list-if-reportantes" class="table-wrapper"></div>
+                            <button id="download-excel-button" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg cursor-pointer transition duration-300 ease-in-out">
+                                Descargar Matriz de Reportantes (Excel)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-6 mb-6">
+                        <div id="cuit-profile-panel" class="chart-container-fixed-height">
+                            <h2 class="text-lg font-semibold text-gray-800 mb-2">Perfil de la Entidad Seleccionada</h2>
+                            <div id="chart-cuit-reportantes" class="w-full h-2/3 flex items-center justify-center border-b pb-4"></div>
+                            <div id="cuit-detail-table-container" class="w-full h-1/3 pt-4 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </div>
+            </details>
+            <details>
+                <summary class="bg-slate-600 text-white">Paso 3: Matriz de Riesgo de Entidades Reportantes</summary>
+                <div class="accordion-content">
+                    <details>
+                        <summary class="bg-slate-500 text-white">Matriz de Riesgo 2024</summary>
+                        <div class="accordion-content">
+                            <p class="text-gray-600 italic">El contenido estará disponible próximamente.</p>
+                        </div>
+                    </details>
+                    <details>
+                        <summary class="bg-slate-500 text-white">Contexto Macroeconómico Argentino Año 2024</summary>
+                        <div class="accordion-content">
+                            <p class="text-gray-600 italic">El contenido estará disponible próximamente.</p>
+                        </div>
+                    </details>
+                    <details>
+                        <summary class="bg-slate-500 text-white">Metodología</summary>
+                        <div class="accordion-content">
+                            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                                <h2 class="text-xl font-bold text-gray-800 mb-4">Análisis de la Matriz de Riesgo - Metodología de Ponderación</h2>
+                                <p class="text-gray-600 mb-4">Este dashboard analiza y pondera el riesgo inherente de la población de entidades financieras (IF) argentinas, evaluando su propensión al no cumplimiento de las obligaciones CRS/FATCA. La metodología se basa en los lineamientos del <a href="https://www.oecd.org/tax/exchange-of-tax-information/common-reporting-standard.htm" class="text-blue-500 underline">Common Reporting Standard (CRS) de la OCDE</a> y se adapta a la realidad del mercado financiero argentino, considerando la cantidad de actores, el volumen de operaciones y el contexto regulatorio.</p>
+
+                                <div class="mb-6">
+                                    <h3 class="text-lg font-semibold text-gray-800 mb-2">1. Criterios de Ponderación</h3>
+                                    <p class="text-gray-700">La matriz asigna un peso a cada entidad reportante (IF) en función de tres criterios principales:</p>
+                                    <ul class="list-disc list-inside space-y-2 text-gray-600 mt-2">
+                                        <li><strong class="text-gray-800">Criterio 1: CUITs con Múltiples Roles (Complejidad Estructural)</strong>
+                                            <p class="text-sm">Se pondera el riesgo en función de la cantidad de roles que una misma entidad financiera (por CUIT) puede tener dentro del ecosistema. Entidades con roles múltiples (por ejemplo, Agente de Liquidación y Compensación, Sociedad Gerente y Fiduciario) representan una mayor complejidad operativa y, por ende, un riesgo inherente más elevado de potenciales errores en la debida diligencia y reporte.</p>
+                                        </li>
+                                        <li><strong class="text-gray-800">Criterio 2: Tipo de Entidad (Naturaleza del Negocio)</strong>
+                                            <p class="text-sm">Se consideran las características inherentes a la naturaleza del negocio de cada tipo de entidad. Por ejemplo, una Sociedad Gerente de Fondos Comunes de Inversión (FCI) o un Agente de Liquidación y Compensación (ALyC) gestionan carteras de clientes que pueden ser más voluminosas y complejas en comparación con una entidad de menor envergadura o con un modelo de negocio más simple. Esta ponderación se basa en la exposición al riesgo del tipo de clientes que suelen operar con cada entidad.</p>
+                                        </li>
+                                        <li><strong class="text-gray-800">Criterio 3: Tamaño de la Cartera de Clientes (Impacto Sistémico)</strong>
+                                            <p class="text-sm">Este criterio se aplica específicamente a aquellas entidades cuyo modelo de negocio implica la gestión de un gran volumen de clientes, como es el caso de Fiduciarios, Sociedades Gerentes de FCI y Agentes Depositarios de FCI. Se asigna un peso mayor a las entidades con carteras de clientes más amplias, ya que cualquier fallo en su proceso de debida diligencia y reporte podría tener un impacto sistémico más significativo en la recolección de información para CRS/FATCA.</p>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div class="mb-6">
+                                    <h3 class="text-lg font-semibold text-gray-800 mb-2">2. Visualización y Matriz de Riesgo</h3>
+                                    <p class="text-gray-700">Una vez ponderados estos criterios, el dashboard presenta el universo de entidades en una matriz de riesgo, permitiendo una visualización clara del perfil de riesgo de cada actor. El objetivo es identificar a aquellos sujetos obligados con mayor exposición a riesgo, permitiendo a los reguladores y equipos de cumplimiento enfocar sus esfuerzos de supervisión y control de manera más eficiente.</p>
+                                    <div class="flex justify-center mt-4">
+                                        <a href="Metodología Matriz de Riesgo.html" target="_blank" class="text-blue-500 hover:text-blue-700 underline text-lg font-bold">Ver la Matriz de Riesgo en detalle (en una nueva ventana)</a>
+                                    </div>
+                                </div>
+                                <p class="text-sm text-gray-500 italic">Esta metodología es un marco de referencia que busca guiar la supervisión basada en riesgos, y puede ser adaptada y mejorada a medida que se disponga de nuevos datos y se profundice el análisis.</p>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal()">&times;</span>
+            <div class="modal-header">
+                <h4 id="modalTitle"></h4>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- INICIO DEL SCRIPT UNIFICADO Y CORREGIDO ---
+        const helpTexts = {
+            enteRegulador: {
+                title: "Distribución por Ente Regulador",
+                text: "Este gráfico de torta muestra cómo se distribuyen todos los registros cargados según el organismo que los regula (BCRA, CNV, SSN, etc.). Permite identificar qué entes tienen mayor cantidad de actores bajo su órbita.<br><br><strong>Interacción:</strong> Haz clic en una porción para filtrar todo el dashboard del 'Paso 1' y ver únicamente los datos de ese regulador."
+            },
+            reporta: {
+                title: "¿Son Sujetos Obligados?",
+                text: "Este gráfico de barras clasifica todos los registros (o los filtrados) según su obligación de reportar bajo los estándares CRS/FATCA.<br><br><strong>Significado de los colores:</strong><br><strong>Verde (No):</strong> Entidades que no son consideradas Instituciones Financieras (IF) y no deben reportar.<br><strong>Naranja (Sí bajo ciertas condiciones):</strong> Entidades que son IF solo si cumplen con ciertos criterios específicos de su negocio.<br><strong>Rojo (Si):</strong> Entidades que son consideradas IF y tienen la obligación de reportar."
+            },
+            concentrationChart: {
+                title: "Top 15 Registros con mas inscripciones",
+                text: "Este gráfico muestra los 15 'Subtipos' de actores más comunes en el universo de datos actual (o filtrado), ordenados de mayor a menor. Sirve para identificar rápidamente dónde se concentra la mayor parte de la actividad del sistema financiero."
+            },
+            exploradorActores: {
+                title: "Explorador de Actores",
+                text: "Esta tabla anidada es el corazón del dashboard. Agrupa a todas las entidades por 'Tipo' y 'Subtipo', permitiendo explorar la estructura completa del sistema financiero. Puedes hacer clic en cada 'Tipo' para expandir y ver los 'Subtipos' que lo componen.<br><br><strong>Interacción:</strong><br>- Clic en un 'Tipo' para desplegar/ocultar sus 'Subtipos'.<br>- Clic en un 'Subtipo' para ver el listado de entidades en el cuadro de la derecha.<br>- Clic en el texto de la columna '¿Debe reportar...?' para ver el fundamento normativo."
+            },
+            analisisCuit: {
+                title: "Análisis de Roles por CUIT",
+                text: "Este visualizador de red permite entender la complejidad de una entidad específica. Muestra cómo un mismo CUIT puede desempeñar múltiples roles (Tipos y Subtipos) en el ecosistema.<br><br><strong>Interacción:</strong><br>- Usa el buscador para encontrar una entidad por CUIT o Razón Social.<br>- Haz clic en una entidad en el 'Listado de Actores' para visualizarla aquí."
+            },
+            resumenClasificacion: {
+                title: "Resumen por Clasificación FATCA/CRS",
+                
+                text: "Esta tabla resume los registros según su clasificación oficial bajo el estándar (ej: Institución Financiera, ENF Activa, etc.).<br><br><strong>Interacción:</strong><br>- Haz clic en cualquier fila para desplegar un detalle que muestra cuántos registros de cada 'Subtipo' componen esa clasificación."
+            }
+        };
+
+        let fullData = [];
+        let block1Rendered = false;
+        let block2Rendered = false;
+        const csvFileInput = document.getElementById('csv-file');
+        const csvLabel = document.getElementById('csv-label');
+        const resetButton = document.getElementById('reset-button');
+        const fileNameSpan = document.getElementById('file-name');
+        const dashboardContent = document.getElementById('dashboard-content');
+
+        let activeFilters = {
+            enteRegulador: null,
+            concentrationView: 'general',
+            reporta: null,
+            reportaPaso2: 'general'
+        };
+        function openHelpModal(title, content) {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalBody').innerHTML = `<p>${content}</p>`;
+            document.getElementById('infoModal').style.display = 'flex';
+        }
+
+        function setupHelpIcons() {
+            d3.selectAll('.help-icon').on('click', function(event) {
+                event.stopPropagation();
+                const key = d3.select(this).attr('data-help-key');
+                if (helpTexts[key]) {
+                    openHelpModal(helpTexts[key].title, helpTexts[key].text);
+                }
+            });
+        }
+
+        csvFileInput.addEventListener('change', handleFile, false);
+        resetButton.addEventListener('click', resetDashboard, false);
+        function resetDashboard() {
+            fullData = [];
+            dashboardContent.classList.add('hidden');
+            block1Rendered = false;
+            block2Rendered = false;
+            
+            activeFilters.enteRegulador = null;
+            activeFilters.concentrationView = 'general';
+            activeFilters.reporta = null;
+            activeFilters.reportaPaso2 = 'general';
+            if (document.getElementById('concentration-filter')) {
+                document.getElementById('concentration-filter').value = 'general';
+            }
+            if (document.getElementById('reportantes-filter')) {
+                document.getElementById('reportantes-filter').value = 'general';
+            }
+            updateFilterStatus();
+
+            document.getElementById('bloque1-details').removeAttribute('open');
+            document.getElementById('bloque2-details').removeAttribute('open');
+            
+            document.getElementById('period-display').textContent = '';
+            const containersToClear = [
+                '#chart-ente-regulador', '#chart-reporta', '#concentration-chart', '#chart-tipo',
+                '#list-subtipo', '#chart-cuit', '#summary-clasificacion-crs',
+                '#list-if-reportantes', '#chart-cuit-reportantes', '#cuit-detail-table-container'
+            ];
+            containersToClear.forEach(container => {
+                d3.select(container).html('');
+            });
+            d3.select('#ente-regulador-total').classed('hidden', true).text('');
+            d3.select('#ente-reporta-total').classed('hidden', true).text('');
+            d3.select('#concentration-total-value').text('--');
+            d3.select('#kpi-total-cuits').text('--');
+            d3.select('#kpi-max-complejidad-content').html(`<p class="mt-1 text-xl font-semibold text-gray-900 truncate">--</p><p class="text-sm text-gray-500">-- Registros</p>`);
+            d3.select('#kpi-promedio-roles').text('--');
+
+            document.getElementById('cuit-search').value = '';
+            csvFileInput.value = '';
+            fileNameSpan.textContent = 'Ningún archivo seleccionado';
+
+            resetButton.classList.add('hidden');
+            csvLabel.classList.remove('hidden');
+        }
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            const loadingSpinner = document.getElementById('loading-spinner');
+
+            if (!file) {
+                fileNameSpan.textContent = 'Ningún archivo seleccionado';
+                return;
+            }
+
+            fileNameSpan.textContent = `Archivo: ${file.name}`;
+            loadingSpinner.classList.remove('hidden');
+            const reader = new FileReader();
+            reader.readAsText(file, 'ISO-8859-1');
+            reader.onload = function(event) {
+                processCSV(event.target.result);
+            };
+        }
+
+        function processCSV(text) {
+            const lines = text.split(/\r?\n/);
+            const periodDisplay = document.getElementById('period-display');
+            
+            periodDisplay.textContent = ''; 
+
+            if (lines.length > 1 && lines[1]) {
+                const periodInfo = lines[1].split(/[,;]/)[0].trim();
+                if (periodInfo) {
+                    periodDisplay.textContent = `(${periodInfo})`;
+                }
+            }
+
+            let headerRowIndex = -1;
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes('CUIT') && lines[i].includes('Razon Social') && lines[i].includes('Argumentación')) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+
+            if (headerRowIndex === -1) {
+                alert("Error: No se pudieron encontrar las columnas necesarias (ej: CUIT, Razon Social, Argumentación) en el archivo.");
+                document.getElementById('loading-spinner').classList.add('hidden');
+                return;
+            }
+
+            const dataToParse = lines.slice(headerRowIndex).join('\n');
+            Papa.parse(dataToParse, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    const sanitizedData = results.data.map(obj => {
+                        const newObj = {};
+                        for (const key in obj) {
+                            newObj[key.trim().replace(/\uFEFF/g, '')] = obj[key];
+                        }
+                        return newObj;
+                    });
+
+                    const expectedHeaders = ['CUIT', 'Tipo', 'Subtipo', 'Rerorta CRS / FATCA', 'Razon Social', 'Ente Regulador', 'Argumentación', 'Fundamento Normativo y del Estándar', 'Clasificación FATCA/CRS'];
+                    const currentHeaders = Object.keys(sanitizedData[0] || {});
+                    const missingHeaders = expectedHeaders.filter(header => !currentHeaders.includes(header));
+
+                    if (missingHeaders.length > 0) {
+                        alert(`Error: Faltan las siguientes columnas en el archivo CSV: ${missingHeaders.join(', ')}. Por favor, asegúrate de que los nombres de las columnas coincidan exactamente.`);
+                        document.getElementById('loading-spinner').classList.add('hidden');
+                        return;
+                    }
+
+                    fullData = sanitizedData.filter(d => d['CUIT'] && d['CUIT'].trim() !== '');
+                    document.getElementById('loading-spinner').classList.add('hidden');
+                    dashboardContent.classList.remove('hidden');
+
+                    setupAccordionListeners();
+
+                    csvLabel.classList.add('hidden');
+                    resetButton.classList.remove('hidden');
+                },
+                error: function(error) {
+                    console.error('Error al procesar el archivo:', error);
+                    document.getElementById('loading-spinner').classList.add('hidden');
+                    alert('Hubo un error al procesar el archivo. Por favor, asegúrate de que sea un archivo CSV válido.');
+                }
+            });
+        }
+
+        function setupAccordionListeners() {
+            document.getElementById('bloque1-details').addEventListener('toggle', function() {
+                if (this.open && !block1Rendered) {
+                    generateEnteReguladorChart(fullData);
+                    updatePaso1Visuals();
+                    initializeSubtipoList();
+                    initializeCuitNetworkPlaceholder('#chart-cuit', 'Haga click en un actor o use el buscador para ver sus roles.');
+                    setupCuitSearch(fullData);
+                    setupHelpIcons();
+                    block1Rendered = true;
+                }
+            });
+            d3.select("#concentration-filter").on("change", function() {
+                activeFilters.concentrationView = this.value;
+                updatePaso1Visuals();
+            });
+            document.getElementById('bloque2-details').addEventListener('toggle', function() {
+                if (this.open && !block2Rendered) {
+                    generateBlock2Visuals(fullData);
+                    block2Rendered = true;
+                }
+            });
+            d3.select("#reportantes-filter").on("change", function() {
+                activeFilters.reportaPaso2 = this.value;
+                generateBlock2Visuals(fullData);
+            });
+            document.getElementById('download-excel-button').addEventListener('click', downloadExcel);
+        }
+
+        function updatePaso1Visuals() {
+            let filteredData = [...fullData];
+            if (activeFilters.enteRegulador) {
+                filteredData = filteredData.filter(d => d['Ente Regulador'] === activeFilters.enteRegulador);
+            }
+            if (activeFilters.reporta) {
+                filteredData = filteredData.filter(d => d['Rerorta CRS / FATCA'].trim() === activeFilters.reporta);
+            }
+            
+            generateReportaChart(filteredData);
+            generateConcentrationChart(filteredData);
+            generateTipoSubtipoTable(filteredData);
+            generateClasificacionSummary(filteredData);
+            
+            initializeSubtipoList();
+        }
+
+        function updateFilterStatus() {
+            const container = d3.select('#filter-status');
+            container.html('');
+
+            if (activeFilters.enteRegulador) {
+                const filterTag = container.append('div')
+                    .attr('class', 'flex items-center space-x-2 bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full w-fit');
+                filterTag.append('span').text(`Ente: ${activeFilters.enteRegulador}`);
+                filterTag.append('button').attr('class', 'text-blue-800 hover:text-blue-900 font-bold').html('&times;')
+                    .on('click', () => {
+                        activeFilters.enteRegulador = null;
+                        updateFilterStatus();
+                        updatePaso1Visuals();
+                        generateEnteReguladorChart(fullData);
+                    });
+            }
+            
+            if (activeFilters.reporta) {
+                const filterTag = container.append('div')
+                    .attr('class', 'flex items-center space-x-2 bg-indigo-100 text-indigo-800 text-sm font-semibold px-3 py-1 rounded-full w-fit');
+                filterTag.append('span').text(`Reporta: ${activeFilters.reporta}`);
+                filterTag.append('button').attr('class', 'text-indigo-800 hover:text-indigo-900 font-bold').html('&times;')
+                    .on('click', () => {
+                        activeFilters.reporta = null;
+                        updateFilterStatus();
+                        updatePaso1Visuals();
+                        generateReportaChart(fullData);
+                    });
+            }
+        }
+        
+        function generateConcentrationChart(data) {
+            const container = d3.select('#concentration-chart');
+            container.html('');
+
+            const tooltip = d3.select("#tooltip");
+
+            let chartData = data;
+            if (activeFilters.concentrationView === 'reportan') {
+                chartData = data.filter(d => {
+                    const status = d['Rerorta CRS / FATCA'].trim();
+                    return status === 'Si' || status === 'Si bajo ciertas condiciones';
+                });
+            } else if (activeFilters.concentrationView === 'no_reportan') {
+                chartData = data.filter(d => d['Rerorta CRS / FATCA'].trim() === 'No');
+            }
+
+            d3.select("#concentration-total-value").text(chartData.length);
+            const counts = d3.rollup(chartData, v => v.length, d => d.Subtipo);
+            const sortedSubtipos = Array.from(counts, ([subtipo, count]) => ({ subtipo, count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 15)
+                .reverse();
+            const margin = { top: 20, right: 60, bottom: 40, left: 300 };
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+            const height = container.node().getBoundingClientRect().height - margin.top - margin.bottom;
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(sortedSubtipos, d => d.count) || 10])
+                .range([0, width]);
+            const y = d3.scaleBand()
+                .domain(sortedSubtipos.map(d => d.subtipo))
+                .range([height, 0])
+                .padding(0.1);
+            svg.append("g")
+                .call(d3.axisLeft(y).tickSize(0).tickPadding(10))
+                .selectAll("text")
+                .style("font-size", "12px");
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x).ticks(5));
+            svg.selectAll(".bar")
+                .data(sortedSubtipos)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("y", d => y(d.subtipo))
+                .attr("height", y.bandwidth())
+                .attr("x", 0)
+                .attr("width", d => x(d.count))
+                .attr("fill", "#60a5fa")
+                .on("mouseover", (event, d) => {
+                    tooltip.style("opacity", 1);
+                })
+                .on("mousemove", (event, d) => {
+                    tooltip.html(`<strong>${d.subtipo}</strong><br>Registros: ${d.count}`)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", () => {
+                    tooltip.style("opacity", 0);
+                });
+            svg.selectAll(".bar-label")
+                .data(sortedSubtipos)
+                .enter().append("text")
+                .attr("x", d => x(d.count) + 5)
+                .attr("y", d => y(d.subtipo) + y.bandwidth() / 2)
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "start")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .text(d => d.count);
+        }
+
+        function generateClasificacionSummary(data) {
+            const container = d3.select('#summary-clasificacion-crs');
+            container.html('');
+
+            const groupedData = d3.group(data, d => d['Clasificación FATCA/CRS'] || "Sin Clasificación");
+            const summaryData = Array.from(groupedData, ([clasificacion, records]) => ({
+                clasificacion,
+                total: records.length,
+                records
+            })).sort((a, b) => b.total - a.total);
+            if (summaryData.length === 0) {
+                container.append('p').attr('class', 'text-gray-500 italic').text('No hay datos para mostrar.');
+                return;
+            }
+
+            const table = container.append("table").attr("class", "min-w-full");
+            const thead = table.append("thead").attr("class", "bg-gray-50");
+            thead.append("tr").selectAll("th")
+                .data(["Clasificación FATCA/CRS", "Total Registros"])
+                .enter().append("th")
+                .attr("scope", "col")
+                .attr("class", "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider")
+                .text(d => d);
+            const tbody = table.append("tbody").attr("class", "bg-white");
+
+            summaryData.forEach(d => {
+                const mainRow = tbody.append('tr')
+                    .attr('class', 'main-row cursor-pointer hover:bg-gray-50 border-b border-gray-200')
+                    .on('click', function() {
+                        const self = d3.select(this);
+                        const detailRow = d3.select(this.nextElementSibling);
+                        const isOpen = self.classed('is-open');
+
+                        tbody.selectAll('.detail-row').classed('hidden', true);
+                        tbody.selectAll('.main-row')
+                            .classed('is-open', false)
+                            .attr('class', 'main-row cursor-pointer hover:bg-gray-50 border-b border-gray-200')
+                            .select('.indicator').html("&#9654;");
+
+                        if (!isOpen) {
+                            self.classed('is-open', true)
+                                .attr('class', 'main-row cursor-pointer is-open bg-blue-50')
+                                .select('.indicator').html("&#9660;");
+                            detailRow.classed('hidden', false);
+                        }
+                    });
+                const firstCell = mainRow.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-800 flex items-center");
+                firstCell.append("span").attr("class", "indicator text-gray-500 inline-block w-4").html("&#9654;");
+                firstCell.append("span").attr("class", "ml-2").text(d.clasificacion);
+                mainRow.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-medium").text(d.total);
+
+                const detailRow = tbody.append('tr')
+                    .attr('class', 'detail-row hidden');
+                const detailCell = detailRow.append('td')
+                    .attr('colspan', 2)
+                    .attr('class', 'p-2 bg-slate-50 border-b border-slate-300');
+                const card = detailCell.append('div')
+                    .attr('class', 'p-4 bg-white rounded-md border');
+                generateSubtipoDetail(card, d.records);
+            });
+        }
+
+        function generateSubtipoDetail(container, records) {
+            const subtipoCounts = d3.rollup(records, v => v.length, d => d.Subtipo);
+            const sortedSubtipos = Array.from(subtipoCounts, ([subtipo, count]) => ({ subtipo, count })).sort((a,b) => b.count - a.count);
+            
+            const innerTable = container.append('table').attr('class', 'min-w-full');
+            const innerThead = innerTable.append('thead');
+            innerThead.append('tr').selectAll('th').data(['Subtipo', 'Cantidad de Registros'])
+                .enter().append('th')
+                .attr('class', 'text-left text-xs font-medium text-gray-500 uppercase tracking-wider pb-2 pr-2')
+                .text(d => d);
+            const innerTbody = innerTable.append('tbody');
+            innerTbody.selectAll('tr').data(sortedSubtipos).enter().append('tr')
+                .html(d => `<td class="py-1 text-sm text-gray-800 pr-2">${d.subtipo}</td><td class="py-1 text-sm text-gray-600">${d.count}</td>`);
+        }
+        
+        function generateBlock2Visuals(data) {
+            let reportingData = data.filter(d => {
+                const reportStatus = d['Rerorta CRS / FATCA'].trim();
+                return reportStatus === 'Si' || reportStatus === 'Si bajo ciertas condiciones';
+            });
+            const filterValue = activeFilters.reportaPaso2;
+            if (filterValue !== 'general') {
+                const cuitsToInclude = new Set(
+                    reportingData
+                        .filter(d => d['Rerorta CRS / FATCA'].trim() === filterValue)
+                        .map(d => d.CUIT)
+                );
+                reportingData = reportingData.filter(d => cuitsToInclude.has(d.CUIT));
+            }
+
+            const groupedByCuit = d3.group(reportingData, d => d.CUIT);
+            const cuitCounts = Array.from(groupedByCuit, ([cuit, values]) => ({
+                CUIT: cuit,
+                'Razon Social': values[0]['Razon Social'],
+                subtipoCount: values.length,
+                entries: values
+            }));
+            const totalCuit = cuitCounts.length;
+            d3.select('#kpi-total-cuits').text(totalCuit);
+
+            if (totalCuit > 0) {
+                cuitCounts.sort((a, b) => b.subtipoCount - a.subtipoCount);
+                const maxComplejidad = cuitCounts[0];
+                const totalRoles = d3.sum(cuitCounts, d => d.subtipoCount);
+                const promedioRoles = (totalRoles / totalCuit).toFixed(1);
+                d3.select('#kpi-max-complejidad-content')
+                  .html(`<p class="mt-1 text-xl font-semibold text-gray-900 truncate" title="${maxComplejidad['Razon Social']}">${maxComplejidad['Razon Social']}</p>
+                         <p class="text-sm text-gray-500">${maxComplejidad.subtipoCount} Registros</p>`);
+                d3.select('#kpi-promedio-roles').text(promedioRoles);
+
+                d3.select('#kpi-max-complejidad').on('click', () => {
+                    d3.selectAll('#list-if-reportantes tbody tr').each(function(d) {
+                        if (d.CUIT === maxComplejidad.CUIT) {
+                            this.dispatchEvent(new MouseEvent('click'));
+                        }
+                    });
+                });
+            } else {
+                d3.select('#kpi-max-complejidad-content')
+                  .html(`<p class="mt-1 text-xl font-semibold text-gray-900 truncate">N/A</p>
+                         <p class="text-sm text-gray-500">0 Registros</p>`);
+                d3.select('#kpi-promedio-roles').text('0');
+            }
+
+            renderIFReportantesList(cuitCounts);
+            initializeCuitNetworkPlaceholder('#chart-cuit-reportantes', 'Haga click en una entidad de la lista para ver su perfil.');
+            d3.select('#cuit-detail-table-container').html('');
+        }
+
+        function renderIFReportantesList(data) {
+            const container = d3.select('#list-if-reportantes');
+            container.selectAll("*").remove();
+            
+            if (data.length === 0) {
+                container.append('p').attr('class', 'text-gray-500 italic').text('No hay entidades que cumplan el criterio.');
+                return;
+            }
+
+            const table = container.append("table").attr("class", "min-w-full divide-y divide-gray-200");
+            const thead = table.append("thead").attr("class", "bg-gray-50 sticky top-0");
+            thead.append("tr").selectAll("th").data(["CUIT", "Razón Social", "Registros"]).enter().append("th").attr("scope", "col").attr("class", "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider").text(d => d);
+            const tbody = table.append("tbody").attr("class", "bg-white divide-y divide-gray-200");
+
+            const rows = tbody.selectAll("tr").data(data).enter().append("tr")
+                .attr("class", "cursor-pointer hover:bg-blue-50")
+                .on("click", function(event, d) {
+                    d3.selectAll('#list-if-reportantes .subtipo-row-selected').classed('subtipo-row-selected', false);
+                    d3.select(this).classed('subtipo-row-selected', true);
+                    
+                    drawCuitNetwork(d.CUIT, fullData, '#chart-cuit-reportantes', '#cuit-profile-panel');
+                    renderCuitDetailTable(d.CUIT, fullData, '#cuit-detail-table-container');
+                });
+            rows.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm text-gray-800").text(d => d.CUIT);
+            rows.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm text-gray-600").text(d => d['Razon Social']);
+            rows.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-center").text(d => d.subtipoCount);
+        }
+
+        
+        function renderCuitDetailTable(cuit, data, containerSelector) {
+            const container = d3.select(containerSelector);
+            container.html('');
+
+            const relatedEntries = data.filter(d => d.CUIT === cuit);
+
+            if (relatedEntries.length === 0) return;
+            const table = container.append('table').attr('class', 'min-w-full divide-y divide-gray-200');
+            const thead = table.append('thead').attr('class', 'bg-gray-50');
+            thead.append('tr').selectAll('th')
+                .data(['Subtipo', 'Razón Social', 'Clasificación FATCA/CRS'])
+                .enter().append('th')
+                .attr('class', 'px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider')
+                .text(d => d);
+            const tbody = table.append('tbody').attr('class', 'bg-white divide-y divide-gray-200');
+            tbody.selectAll('tr').data(relatedEntries).enter().append('tr')
+                .html(d => `
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-700">${d.Subtipo}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-600">${d['Razon Social']}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-500">${d['Clasificación FATCA/CRS']}</td>
+                `);
+        }
+        function initializeCuitNetworkPlaceholder(selector, text) {
+            const container = d3.select(selector);
+            container.selectAll("*").remove();
+            container.append('p')
+                .attr('class', 'text-gray-500 italic text-center')
+                .html(text);
+        }
+
+        function initializeSubtipoList() {
+            const container = d3.select('#list-subtipo');
+            container.selectAll("*").remove();
+            container.append('p').attr('class', 'text-gray-500 italic text-center mt-8').html('Haga click en un <b>subtipo</b> de la tabla "Explorador" para ver el listado.');
+        }
+
+        function renderSubtipoList(subtype, data) {
+            const container = d3.select('#list-subtipo');
+            container.selectAll("*").remove();
+            const filteredData = data.filter(d => d['Subtipo'] === subtype);
+            if (filteredData.length === 0) {
+                container.append('p').attr('class', 'text-gray-500 italic').text('No hay entidades para este subtipo.');
+                return;
+            }
+            const table = container.append("table").attr("class", "min-w-full divide-y divide-gray-200");
+            const thead = table.append("thead").attr("class", "bg-gray-50 sticky top-0");
+            thead.append("tr").selectAll("th").data(["CUIT", "Razón Social"]).enter().append("th").attr("scope", "col").attr("class", "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider").text(d => d);
+            const tbody = table.append("tbody").attr("class", "bg-white divide-y divide-gray-200");
+
+            filteredData.forEach(d => {
+                const row = tbody.append("tr")
+                    .attr("class", "cursor-pointer hover:bg-blue-50")
+                    .on("click", function(event) {
+                        event.stopPropagation(); 
+                        d3.selectAll('#list-subtipo-container tr').classed('subtipo-row-selected', false);
+                        d3.select(this).classed('subtipo-row-selected', true);
+                        drawCuitNetwork(d.CUIT, fullData, '#chart-cuit', '#chart-cuit-container');
+                    });
+                row.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm text-gray-800").text(d['CUIT']);
+                row.append("td").attr("class", "px-4 py-3 whitespace-nowrap text-sm text-gray-600").text(d['Razon Social']);
+            });
+        }
+        
+        function generateTipoSubtipoTable(data) {
+            const types = d3.group(data, d => d['Tipo']);
+            const sortedTypes = Array.from(types, ([key, value]) => ({ Tipo: key, count: value.length, subtipos: d3.group(value, d => d['Subtipo']) })).sort((a, b) => a.Tipo.localeCompare(b.Tipo));
+            const container = d3.select('#chart-tipo');
+            container.selectAll("*").remove();
+            const table = container.append("table").attr("class", "min-w-full");
+            const thead = table.append("thead").attr("class", "bg-gray-50 sticky top-0");
+            const headRow = thead.append("tr");
+            headRow.append("th").attr("scope", "col").attr("class", "w-1/2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider").text("Tipo / Subtipo");
+            headRow.append("th").attr("scope", "col").attr("class", "w-1/4 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider").text("¿Debe reportar FATCA & CRS?");
+            headRow.append("th").attr("scope", "col").attr("class", "w-1/4 px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider").text("Clasificación FATCA/CRS");
+            headRow.append("th").attr("scope", "col").attr("class", "w-1/4 px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider").text("Cantidad de Registros");
+
+            const tbody = table.append("tbody").attr("class", "bg-white divide-y divide-gray-200");
+            sortedTypes.forEach(d => {
+                const tipoClassName = "tipo-group-" + d.Tipo.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+                const row = tbody.append("tr").attr("class", "cursor-pointer hover:bg-gray-100").on("click", () => {
+                    const subtypeRows = tbody.selectAll("." + tipoClassName);
+                    const currentlyHidden = subtypeRows.classed('hidden');
+                    subtypeRows.classed('hidden', !currentlyHidden);
+                });
+                row.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900").text(d.Tipo);
+                row.append("td");
+                row.append("td"); 
+                row.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right font-bold").text(d.count);
+
+                const sortedSubtipos = Array.from(d.subtipos, ([key, value]) => ({ 
+                    Subtipo: key, 
+                    count: value.length, 
+                    status: value.length > 0 ? value[0]['Rerorta CRS / FATCA'].trim() : '',
+                    argumentacion: value.length > 0 ? value[0]['Argumentación'] : '',
+                    fundamento: value.length > 0 ? value[0]['Fundamento Normativo y del Estándar'] : '',
+                    clasificacionCRS: value.length > 0 ? value[0]['Clasificación FATCA/CRS'] : ''
+                })).sort((a, b) => a.Subtipo.localeCompare(b.Subtipo));
+                sortedSubtipos.forEach(sub => {
+                    const subRow = tbody.append("tr").attr("class", `hidden ${tipoClassName} cursor-pointer hover:bg-blue-50 bg-gray-50`).on("click", function(event) {
+                        event.stopPropagation(); 
+                        d3.selectAll('#chart-tipo .subtipo-row-selected').classed('subtipo-row-selected', false);
+                        d3.select(this).classed('subtipo-row-selected', true);
+                        renderSubtipoList(sub.Subtipo, fullData);
+                    });
+                    subRow.append("td").attr("class", "w-1/2 pl-8 pr-6 py-2 whitespace-nowrap text-sm text-gray-700").text(`- ${sub.Subtipo}`);
+                    const reportableCell = subRow.append("td").attr("class", "w-1/4 px-6 py-2 whitespace-nowrap text-sm text-gray-500 text-center clickable");
+                    reportableCell.text(sub.status);
+                    reportableCell.on('click', function(event) {
+                        event.stopPropagation();
+                        openModal(sub.Subtipo, sub.argumentacion, sub.fundamento);
+                    });
+                    subRow.append("td").attr("class", "w-1/4 px-6 py-2 whitespace-nowrap text-sm text-gray-500 text-center").text(sub.clasificacionCRS || 'N/A');
+                    subRow.append("td").attr("class", "w-1/4 px-6 py-2 whitespace-nowrap text-sm text-gray-500 text-right").text(sub.count);
+                });
+            });
+        }
+        
+        function generateEnteReguladorChart(data) {
+            const counts = d3.group(data, d => d['Ente Regulador']);
+            const pieData = Array.from(counts, ([key, value]) => ({ label: key, value: value.length })).sort((a, b) => d3.descending(a.value, b.value));
+            const totalEntities = d3.sum(pieData, d => d.value);
+            d3.select('#ente-regulador-total').text(`Total de Registros: ${totalEntities}`).classed('hidden', false);
+            
+            drawPieChartWithFilters('#chart-ente-regulador', pieData);
+        }
+        
+        function drawPieChartWithFilters(selector, data) {
+            const container = d3.select(selector);
+            container.selectAll("*").remove();
+            
+            const tooltip = d3.select("#tooltip");
+            const total = d3.sum(data, d => d.value);
+
+            const width = container.node().getBoundingClientRect().width;
+            const height = container.node().getBoundingClientRect().height;
+            const radius = Math.min(width, height) / 2 - 20;
+            const color = d3.scaleOrdinal(d3.schemeTableau10);
+            const svg = container.append("svg").attr("width", width).attr("height", height).append("g").attr("transform", `translate(${width * 0.4}, ${height / 2})`);
+            const pie = d3.pie().value(d => d.value).sort(null);
+            const arc = d3.arc().innerRadius(0).outerRadius(radius);
+
+            const arcs = svg.selectAll(".arc").data(pie(data)).enter().append("g")
+                .attr("class", "arc")
+                .style("cursor", "pointer")
+                .on("click", (event, d) => {
+                    activeFilters.enteRegulador = activeFilters.enteRegulador === d.data.label ? null : d.data.label;
+                    updateFilterStatus();
+                    updatePaso1Visuals();
+                    generateEnteReguladorChart(fullData);
+                })
+                .on("mouseover", (event, d) => tooltip.style("opacity", 1))
+                .on("mousemove", (event, d) => {
+                    const percentage = total > 0 ? (d.data.value / total * 100).toFixed(1) : 0;
+                    tooltip.html(`<strong>${d.data.label}</strong><br>Registros: ${d.data.value}<br>Porcentaje: ${percentage}%`)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", () => tooltip.style("opacity", 0));
+            arcs.append("path").attr("d", arc)
+                .attr("fill", d => color(d.data.label))
+                .attr("stroke", d => d.data.label === activeFilters.enteRegulador ? "black" : "none")
+                .attr("stroke-width", d => d.data.label === activeFilters.enteRegulador ? 3 : 0);
+            arcs.append("text")
+                .attr("transform", d => `translate(${arc.centroid(d)})`)
+                .attr("dy", "0.35em")
+                .attr("text-anchor", "middle")
+                .text(d => {
+                    const percentage = total > 0 ? (d.data.value / total * 100) : 0;
+                    return percentage >= 5 ? `${percentage.toFixed(1)}%` : "";
+                })
+                .style("fill", "white").style("font-weight", "bold").style("font-size", "14px").style("pointer-events", "none");
+            const legend = svg.selectAll(".legend").data(data).enter().append("g").attr("class", "legend").attr("transform", (d, i) => `translate(${radius + 40}, ${i * 25 - (data.length * 12.5)})`);
+            legend.append("rect").attr("width", 18).attr("height", 18).style("fill", d => color(d.label));
+            legend.append("text").attr("x", 24).attr("y", 9).attr("dy", ".35em").style("text-anchor", "start").text(d => d.label).style("fill", "black");
+        }
+
+        function generateReportaChart(data) {
+            const container = d3.select('#chart-reporta');
+            container.selectAll("*").remove();
+
+            const tooltip = d3.select("#tooltip");
+            
+            const normalizedData = data.map(d => ({...d, 'Rerorta CRS / FATCA': d['Rerorta CRS / FATCA'].trim()}));
+            const counts = d3.group(normalizedData, d => d['Rerorta CRS / FATCA']);
+            const order = ["Si", "Si bajo ciertas condiciones", "No"];
+            const colorMap = {"Si": "#ef4444", "Si bajo ciertas condiciones": "#f59e0b", "No": "#22c55e"};
+            const sortedCounts = Array.from(counts, ([key, value]) => ({ name: key, count: value.length })).sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+            const totalEntities = d3.sum(sortedCounts, d => d.count);
+
+            d3.select('#ente-reporta-total').text(`Total de Registros: ${totalEntities}`).classed('hidden', false);
+            const margin = { top: 20, right: 60, bottom: 50, left: 150 };
+            const width = container.node().getBoundingClientRect().width - margin.left - margin.right;
+            const height = container.node().getBoundingClientRect().height - margin.top - margin.bottom;
+            const svg = container.append("svg").attr("width", width + margin.left + margin.right).attr("height", height + margin.top + margin.bottom).append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+            const x = d3.scaleLinear().domain([0, d3.max(sortedCounts, d => d.count) * 1.1 || 10]).range([0, width]);
+            const y = d3.scaleBand().range([0, height]).domain(order).padding(0.3);
+            svg.selectAll(".bar").data(sortedCounts).enter().append("rect")
+                .attr("class", "bar")
+                .attr("y", d => y(d.name))
+                .attr("x", 0)
+                .attr("height", y.bandwidth())
+                .attr("width", d => x(d.count))
+                .attr("fill", d => colorMap[d.name] || "#63B3ED")
+                .style("cursor", "pointer")
+                .attr("stroke", d => d.name === activeFilters.reporta ? "black" : "none")
+                .attr("stroke-width", d => d.name === activeFilters.reporta ? 3 : 0)
+                .on("click", (event, d) => {
+                    activeFilters.reporta = activeFilters.reporta === d.name ? null : d.name;
+                    updateFilterStatus();
+                    updatePaso1Visuals();
+                    generateEnteReguladorChart(fullData);
+                })
+                .on("mouseover", (event, d) => tooltip.style("opacity", 1))
+                .on("mousemove", (event, d) => {
+                    const percentage = totalEntities > 0 ? (d.count / totalEntities * 100).toFixed(1) : 0;
+                    tooltip.html(`<strong>${d.name}</strong><br>Registros: ${d.count}<br>Porcentaje: ${percentage}%`)
+                        .style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", () => tooltip.style("opacity", 0));
+            svg.selectAll(".bar-label").data(sortedCounts).enter().append("text").attr("x", d => x(d.count) + 5).attr("y", d => y(d.name) + y.bandwidth() / 2).attr("dy", "0.35em").attr("text-anchor", "start").attr("fill", "black").style("font-size", "14px").style("font-weight", "bold").text(d => d.count);
+            const yAxis = svg.append("g").call(d3.axisLeft(y).tickSize(0).tickPadding(10));
+            yAxis.selectAll(".tick text").each(function(d) {
+                if (d === "Si bajo ciertas condiciones") {
+                    const self = d3.select(this);
+                    self.text(null);
+                    self.append("tspan").attr("x", -10).attr("dy", "-0.3em").text("Si bajo ciertas");
+                    self.append("tspan").attr("x", -10).attr("dy", "1.2em").text("condiciones");
+                }
+            }).style("font-family", "Arial, sans-serif").style("font-size", "14px");
+            svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).ticks(5).tickFormat(d3.format("d")));
+        }
+        
+        function downloadExcel() {
+            const filterValue = activeFilters.reportaPaso2;
+            let dataToExport = fullData.filter(d => {
+                const status = d['Rerorta CRS / FATCA'].trim();
+                return status === 'Si' || status === 'Si bajo ciertas condiciones';
+            });
+            if (filterValue !== 'general') {
+                const cuitsToInclude = new Set(
+                    dataToExport
+                        .filter(d => d['Rerorta CRS / FATCA'].trim() === filterValue)
+                        .map(d => d.CUIT)
+                );
+                dataToExport = dataToExport.filter(d => cuitsToInclude.has(d.CUIT));
+            }
+
+            if (dataToExport.length === 0) {
+                alert('No hay entidades reportantes para descargar con el filtro actual.');
+                return;
+            }
+
+            const allSubtipos = [...new Set(dataToExport.map(d => d['Subtipo']))];
+            allSubtipos.sort();
+
+            const cuitsData = d3.group(dataToExport, d => d['CUIT']);
+
+            const cuitCounts = Array.from(cuitsData, ([cuit, values]) => ({
+                CUIT: cuit,
+                'Razon Social': values[0]['Razon Social'],
+                subtipoCount: values.length,
+                entries: values
+            }));
+            cuitCounts.sort((a, b) => b.subtipoCount - a.subtipoCount);
+
+            const worksheetData = [];
+            worksheetData.push([{ v: 'Entidades Reportables', t: 's', s: { font: { sz: 16, bold: true } } }]);
+            worksheetData.push([]);
+            const headers = ['CUIT', 'Razón Social', 'Cantidad de Registros Activos', ...allSubtipos];
+            worksheetData.push(headers);
+            cuitCounts.forEach(d => {
+                const row = [d.CUIT, d['Razon Social'], d.subtipoCount];
+                
+                const subtiposMap = new Map();
+                d.entries.forEach(entry => {
+                    subtiposMap.set(entry['Subtipo'], entry['Rerorta CRS / FATCA'].trim());
+                });
+
+                allSubtipos.forEach(subtipo => {
+                    row.push(subtiposMap.get(subtipo) || '');
+                });
+                worksheetData.push(row);
+            });
+
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+            const columnWidths = headers.map(header => ({
+                wch: header.length + 5
+            }));
+            columnWidths[0].wch = 15;
+            columnWidths[1].wch = 30;
+            worksheet['!cols'] = columnWidths;
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Entidades Reportantes');
+            XLSX.writeFile(workbook, 'Entidades_Reportantes_CRS_FATCA.xlsx');
+        }
+
+        function setupCuitSearch(data) {
+            const searchInput = d3.select("#cuit-search");
+            searchInput.on("input", function() {
+                const searchTerm = this.value.toLowerCase();
+                if (searchTerm.length < 3) {
+                    d3.select('#chart-cuit').selectAll('*').remove();
+                    initializeCuitNetworkPlaceholder('#chart-cuit', 'Haga click en un actor o use el buscador para ver sus roles.');
+                    return;
+                }
+                const foundItems = data.filter(d => d['CUIT'].toLowerCase().includes(searchTerm) || d['Razon Social'].toLowerCase().includes(searchTerm));
+                if (foundItems.length > 0) {
+                    drawCuitNetwork(foundItems[0]['CUIT'], data, '#chart-cuit', '#chart-cuit-container');
+                } else {
+                    d3.select('#chart-cuit').selectAll('*').remove();
+                }
+            });
+        }
+
+        // --- CÓDIGO CORREGIDO ---
+        function drawCuitNetwork(cuit, data, chartSelector, containerSelector) {
+            d3.select(chartSelector).selectAll('*').remove();
+            const relatedEntries = data.filter(d => d['CUIT'] === cuit);
+            if (relatedEntries.length === 0) return;
+            
+            const razonSocial = relatedEntries[0]['Razon Social'];
+            const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+            const containerNode = d3.select(containerSelector).node();
+            if (!containerNode) return;
+
+            const containerWidth = containerNode.getBoundingClientRect().width;
+            const width = containerWidth - margin.left - margin.right;
+            
+            let height;
+            if (chartSelector === '#chart-cuit-reportantes') {
+                height = containerNode.getBoundingClientRect().height * 0.6; // Use a portion for the graph
+            } else {
+                height = containerNode.getBoundingClientRect().height - 100; // Adjust for search bar
+            }
+            height = Math.max(height, 250); // Minimum height
+
+            const nodes = [{ id: cuit, name: `${razonSocial}\n${cuit}`, isCentral: true }];
+            const links = [];
+            relatedEntries.forEach(entry => {
+                const tipoId = `tipo-${entry.Tipo}`;
+                const subtipoId = `subtipo-${entry.Subtipo}-${entry.Tipo}`;
+                if (!nodes.find(n => n.id === tipoId)) {
+                    nodes.push({ id: tipoId, name: entry.Tipo, type: 'Tipo' });
+                    links.push({ source: cuit, target: tipoId });
+                }
+                if (!nodes.find(n => n.id === subtipoId)) {
+                    nodes.push({ id: subtipoId, name: entry.Subtipo, type: 'Subtipo' });
+                    links.push({ source: tipoId, target: subtipoId });
+                }
+            });
+            const simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-400))
+                .force("center", d3.forceCenter(width / 2, height / 2));
+                
+            const svg = d3.select(chartSelector).append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+                
+            const link = svg.append("g").attr("stroke", "#999").attr("stroke-opacity", 0.6).selectAll("line").data(links).join("line").attr("stroke-width", 1.5);
+            const node = svg.append("g").selectAll("g").data(nodes).join("g").call(drag(simulation));
+            
+            node.append("circle").attr("r", d => d.isCentral ? 40 : (d.type === 'Tipo' ? 25 : 15)).attr("fill", d => d.isCentral ? '#4299e1' : (d.type === 'Tipo' ? '#ecc94b' : '#f6ad55')).attr("stroke", "#fff").attr("stroke-width", 1.5);
+            node.append("text").attr("text-anchor", "middle").attr("dominant-baseline", "central").attr("fill", "#333").style("font-size", d => d.isCentral ? "12px" : "10px").selectAll("tspan").data(d => d.name.split('\n')).join("tspan").attr("x", 0).attr("dy", (d, i) => i === 0 ? "-0.3em" : "1.2em").text(d => d);
+            
+            simulation.on("tick", () => {
+                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+        }
+
+        function drag(simulation) {
+            function dragstarted(event) { if (!event.active) simulation.alphaTarget(0.3).restart();}
+            function dragged(event) { event.subject.fx = event.x; event.subject.fy = event.y;}
+            function dragended(event) { if (!event.active) simulation.alphaTarget(0);}
+            return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+        }
+        
+        function openModal(subtipo, argumentacion, fundamento) {
+            document.getElementById('modalTitle').innerText = subtipo;
+            document.getElementById('modalBody').innerHTML = `
+                <p><strong>Argumentación:</strong></p>
+                <p>${argumentacion || 'No disponible.'}</p>
+                <hr>
+                <p><strong>Fundamento Normativo y del Estándar:</strong></p>
+                <p>${fundamento || 'No disponible.'}</p>
+            `;
+            document.getElementById('infoModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('infoModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('infoModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
